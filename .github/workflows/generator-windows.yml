@@ -352,6 +352,19 @@ jobs:
           Invoke-WebRequest -Uri https://raw.githubusercontent.com/bryangerlach/rdgen/refs/heads/master/.github/patches/themeColors.py -OutFile themeColors.py
           python themeColors.py
 
+      - name: Checkout ArinaDesk patch files
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          path: ./arina-src
+
+      - name: Apply ArinaDesk UI patch
+        shell: bash
+        run: |
+          python3 ./arina-src/.github/arinadesk/arinadesk_patch.py --rustdesk-root .
+          rm -rf ./arina-src || true
+
       - name: Patch remote printer port to spool file
         shell: python
         run: |
