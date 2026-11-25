@@ -5,9 +5,12 @@ Target: RustDesk 1.5.3 (flutter/lib/desktop/pages/desktop_home_page.dart).
 
 Adds an "ArinaDesk tools" button area to the left pane of the home page.
 Buttons:
-  1. "copy ticket info": ID, computer name and OS go to the clipboard.
-  2. "quick system check": disk, RAM, uptime, adapters, DNS and connectivity
+  1. "request support": creates a Zammad ticket (HTTP Basic auth, credentials
+     are saved once in the app's support settings).
+  2. "track tickets": opens the helpdesk site in the browser.
+  3. "quick system check": disk, RAM, uptime, adapters, DNS and connectivity
      checks done natively (dart:ffi / dart:io), no PowerShell or cmd involved.
+  4. "copy ticket info": ID, computer name and OS go to the clipboard.
 
 The script FAILS (non-zero exit) if an anchor line is not found exactly once,
 so a RustDesk upgrade that changes the UI breaks the build loudly instead of
@@ -25,11 +28,21 @@ MARKER = "buildArinaTools"
 
 # extra Dart files shipped next to this script, copied into the RustDesk tree
 EXTRA_DIR = "flutter/lib/arinadesk"
-EXTRA_FILES = ("system_check_core.dart", "system_check_ui.dart")
+EXTRA_FILES = (
+    "arina_config.dart",
+    "support_api.dart",
+    "support_store.dart",
+    "support_ui.dart",
+    "system_check_core.dart",
+    "system_check_ui.dart",
+)
 
 # import line added to the home page (anchor must exist exactly once)
 IMPORT_ANCHOR = "import 'package:flutter_hbb/consts.dart';"
-IMPORT_INSERT = "import 'package:flutter_hbb/arinadesk/system_check_ui.dart';"
+IMPORT_INSERT_LINES = (
+    "import 'package:flutter_hbb/arinadesk/support_ui.dart';",
+    "import 'package:flutter_hbb/arinadesk/system_check_ui.dart';",
+)
 
 # 1) the children list of buildLeftPane(): add our widget after the password board
 LIST_ANCHOR = "if (!isOutgoingOnly) buildPasswordBoard(context),"
@@ -46,10 +59,19 @@ METHODS = r"""Widget buildArinaTools(BuildContext context) {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _arinaToolButton(
-              Icons.content_copy, 'کپی اطلاعات برای تیکت', _arinaCopyTicketInfo),
+              Icons.support_agent,
+              'درخواست پشتیبانی',
+              () => showArinaSupportRequest(
+                  context, gFFI.serverModel.serverId.text.trim())),
+          const SizedBox(height: 6),
+          _arinaToolButton(Icons.open_in_new, 'پیگیری تیکت‌ها',
+              () => openArinaSupportPortal(context)),
           const SizedBox(height: 6),
           _arinaToolButton(
               Icons.speed, 'بررسی سریع سیستم', () => showArinaSystemCheck(context)),
+          const SizedBox(height: 6),
+          _arinaToolButton(
+              Icons.content_copy, 'کپی اطلاعات برای تیکت', _arinaCopyTicketInfo),
         ],
       ),
     );
@@ -136,7 +158,7 @@ def main():
         if n != 1:
             fail("%s found %d times (expected exactly 1): %s" % (name, n, anchor))
 
-    src = src.replace(IMPORT_ANCHOR, IMPORT_ANCHOR + nl + IMPORT_INSERT, 1)
+    src = src.replace(IMPORT_ANCHOR, IMPORT_ANCHOR + nl + nl.join(IMPORT_INSERT_LINES), 1)
     src = src.replace(LIST_ANCHOR, LIST_ANCHOR + nl + "      " + LIST_INSERT, 1)
 
     methods = METHODS.replace("\r\n", "\n").replace("\n", nl)
