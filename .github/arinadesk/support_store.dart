@@ -7,8 +7,17 @@ class ArinaSupportSettings {
   final String url;
   final String user;
   final String password;
-  const ArinaSupportSettings(
-      {this.url = '', this.user = '', this.password = ''});
+
+  /// Last requester name / phone typed in the request form (prefilled next time).
+  final String requesterName;
+  final String phone;
+  const ArinaSupportSettings({
+    this.url = '',
+    this.user = '',
+    this.password = '',
+    this.requesterName = '',
+    this.phone = '',
+  });
 
   bool get hasCredentials =>
       url.trim().isNotEmpty && user.trim().isNotEmpty && password.isNotEmpty;
@@ -43,6 +52,8 @@ Future<ArinaSupportSettings> loadArinaSettings({
           url: url.isEmpty ? defaultUrl : url,
           user: (j['user'] ?? '').toString(),
           password: (j['password'] ?? '').toString(),
+          requesterName: (j['requester_name'] ?? '').toString(),
+          phone: (j['phone'] ?? '').toString(),
         );
       }
     }
@@ -58,7 +69,13 @@ Future<void> saveArinaSettings(
   final f = _file(appName, baseDir);
   await f.parent.create(recursive: true);
   await f.writeAsString(
-    jsonEncode({'url': s.url.trim(), 'user': s.user.trim(), 'password': s.password}),
+    jsonEncode({
+      'url': s.url.trim(),
+      'user': s.user.trim(),
+      'password': s.password,
+      'requester_name': s.requesterName.trim(),
+      'phone': s.phone.trim(),
+    }),
     flush: true,
   );
 }

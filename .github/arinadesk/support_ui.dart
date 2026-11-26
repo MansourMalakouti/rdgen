@@ -87,6 +87,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   bool _busy = false;
   String? _message;
   bool _messageOk = false;
+  ArinaSupportSettings _orig = const ArinaSupportSettings();
 
   @override
   void initState() {
@@ -98,6 +99,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
     final s = await _load();
     if (!mounted) return;
     setState(() {
+      _orig = s;
       _url.text = s.url;
       _user.text = s.user;
       _pass.text = s.password;
@@ -114,7 +116,12 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   }
 
   ArinaSupportSettings _current() => ArinaSupportSettings(
-      url: _url.text.trim(), user: _user.text.trim(), password: _pass.text);
+        url: _url.text.trim(),
+        user: _user.text.trim(),
+        password: _pass.text,
+        requesterName: _orig.requesterName,
+        phone: _orig.phone,
+      );
 
   Future<void> _test() async {
     final s = _current();
@@ -267,6 +274,8 @@ class _RequestDialog extends StatefulWidget {
 class _RequestDialogState extends State<_RequestDialog> {
   final _title = TextEditingController();
   final _body = TextEditingController();
+  final _name = TextEditingController();
+  final _phone = TextEditingController();
   late ArinaSupportSettings _settings;
   bool _sending = false;
   String? _error;
@@ -276,12 +285,16 @@ class _RequestDialogState extends State<_RequestDialog> {
   void initState() {
     super.initState();
     _settings = widget.settings;
+    _name.text = _settings.requesterName;
+    _phone.text = _settings.phone;
   }
 
   @override
   void dispose() {
     _title.dispose();
     _body.dispose();
+    _name.dispose();
+    _phone.dispose();
     super.dispose();
   }
 
@@ -315,9 +328,19 @@ class _RequestDialogState extends State<_RequestDialog> {
   Future<void> _submit() async {
     final title = _title.text.trim();
     final text = _body.text.trim();
-    if (title.isEmpty) {
+    final name = _name.text.trim();
+    final phone = _phone.text.trim();
+    String? problem;
+    if (kArinaFieldName.isNotEmpty && name.isEmpty) {
+      problem = 'نام درخواست‌دهنده را بنویسید.';
+    } else if (kArinaFieldPhone.isNotEmpty && phone.isEmpty) {
+      problem = 'شماره‌ی تماس را بنویسید.';
+    } else if (title.isEmpty) {
+      problem = 'عنوان مشکل را بنویسید.';
+    }
+    if (problem != null) {
       setState(() {
-        _error = 'عنوان مشکل را بنویسید.';
+        _error = problem;
       });
       return;
     }
@@ -327,6 +350,12 @@ class _RequestDialogState extends State<_RequestDialog> {
     });
     try {
       final body = '${text.isEmpty ? title : text}\n\n${_deviceFooter()}';
+      final extra = <String, Object>{...kArinaZammadExtraFields};
+      if (kArinaFieldName.isNotEmpty) extra[kArinaFieldName] = name;
+      if (kArinaFieldPhone.isNotEmpty) extra[kArinaFieldPhone] = phone;
+      if (kArinaFieldDeviceId.isNotEmpty && widget.deviceId.isNotEmpty) {
+        extra[kArinaFieldDeviceId] = widget.deviceId;
+      }
       final t = await arinaCreateTicket(
         url: _settings.url,
         user: _settings.user,
@@ -334,8 +363,20 @@ class _RequestDialogState extends State<_RequestDialog> {
         group: kArinaZammadGroup,
         title: title,
         body: body,
-        extra: kArinaZammadExtraFields,
+        extra: extra,
       );
+      // remember name / phone for the next request on this computer
+      try {
+        final updated = ArinaSupportSettings(
+          url: _settings.url,
+          user: _settings.user,
+          password: _settings.password,
+          requesterName: name,
+          phone: phone,
+        );
+        await saveArinaSettings(updated, appName: _appName());
+        _settings = updated;
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _ticket = t;
@@ -360,6 +401,24 @@ class _RequestDialogState extends State<_RequestDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (kArinaFieldName.isNotEmpty) ...[
+            TextField(
+              controller: _name,
+              enabled: !_sending,
+              textDirection: TextDirection.rtl,
+              decoration: const InputDecoration(labelText: 'نام درخواست‌دهنده'),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (kArinaFieldPhone.isNotEmpty) ...[
+            TextField(
+              controller: _phone,
+              enabled: !_sending,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(labelText: 'شماره‌ی تماس'),
+            ),
+            const SizedBox(height: 8),
+          ],
           TextField(
             controller: _title,
             enabled: !_sending,
@@ -374,8 +433,8 @@ class _RequestDialogState extends State<_RequestDialog> {
           TextField(
             controller: _body,
             enabled: !_sending,
-            minLines: 6,
-            maxLines: 12,
+            minLines: 5,
+            maxLines: 10,
             textDirection: TextDirection.rtl,
             decoration: const InputDecoration(
               labelText: 'شرح مشکل',
