@@ -149,6 +149,7 @@ Future<ArinaTicket> arinaCreateTicket({
   required String group,
   required String title,
   required String body,
+  Map<String, Object> extra = const {},
 }) async {
   final j = await _request(
     'POST',
@@ -157,6 +158,7 @@ Future<ArinaTicket> arinaCreateTicket({
     user,
     password,
     body: {
+      ...extra,
       'title': title,
       'group': group,
       'article': {

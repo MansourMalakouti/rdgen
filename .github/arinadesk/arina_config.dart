@@ -1,9 +1,13 @@
 // ArinaDesk support-portal defaults.
-// Edit these two values to point the client at another Zammad helpdesk.
+// Edit these values to point the client at another Zammad helpdesk.
 // The user can still change the address in the app's support settings.
 
 /// Base address of the Zammad helpdesk (the public login page, no secrets).
 const String kArinaZammadUrl = 'https://help.arinet.ir';
 
 /// Zammad group that new tickets are created in.
-const String kArinaZammadGroup = 'Users';
+const String kArinaZammadGroup = 'پشتیبانی و نصب نرم افزار';
+
+/// Extra ticket fields sent with every new ticket (for required custom
+/// fields of your Zammad), e.g. {'my_field': 'value'}. Empty by default.
+const Map<String, Object> kArinaZammadExtraFields = {};
