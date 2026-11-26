@@ -12,6 +12,9 @@ Buttons:
      checks done natively (dart:ffi / dart:io), no PowerShell or cmd involved.
   4. "copy ticket info": ID, computer name and OS go to the clipboard.
 
+It also bundles the Vazirmatn font (downloaded at build time, checksum
+verified, SIL OFL licence) and registers it in flutter/pubspec.yaml.
+
 The script FAILS (non-zero exit) if an anchor line is not found exactly once,
 so a RustDesk upgrade that changes the UI breaks the build loudly instead of
 silently producing a client without the buttons.
@@ -19,8 +22,11 @@ silently producing a client without the buttons.
 No company-specific values live here: this repository is public.
 """
 import argparse
+import hashlib
 import pathlib
 import sys
+import time
+import urllib.request
 
 HOME_PAGE = "flutter/lib/desktop/pages/desktop_home_page.dart"
 
@@ -30,11 +36,30 @@ MARKER = "buildArinaTools"
 EXTRA_DIR = "flutter/lib/arinadesk"
 EXTRA_FILES = (
     "arina_config.dart",
+    "arina_ui_common.dart",
     "support_api.dart",
     "support_store.dart",
     "support_ui.dart",
     "system_check_core.dart",
     "system_check_ui.dart",
+)
+
+# Vazirmatn (SIL OFL 1.1), pinned release + SHA-256 so a changed file is rejected
+PUBSPEC = "flutter/pubspec.yaml"
+FONT_DIR = "flutter/assets/fonts"
+FONT_URL = "https://raw.githubusercontent.com/rastikerdar/vazirmatn/v33.003/fonts/ttf/%s"
+FONT_FILES = (
+    ("Vazirmatn-Regular.ttf",
+     "b69fd4c680b8f3f225feabcc655a2c585d97627b8f5f5c0f9985e894069f3a56"),
+    ("Vazirmatn-Bold.ttf",
+     "f635fdbea28f265de395ba83b4b1570dcf2f58d13c65469e61903b1c2d2ae723"),
+)
+FONT_YAML = (
+    "    - family: Vazirmatn\n"
+    "      fonts:\n"
+    "        - asset: assets/fonts/Vazirmatn-Regular.ttf\n"
+    "        - asset: assets/fonts/Vazirmatn-Bold.ttf\n"
+    "          weight: 700\n"
 )
 
 # import line added to the home page (anchor must exist exactly once)
@@ -88,6 +113,7 @@ METHODS = r"""Widget buildArinaTools(BuildContext context) {
           Flexible(
             child: AutoSizeText(
               label,
+              style: const TextStyle(fontFamily: 'Vazirmatn'),
               maxLines: 1,
               minFontSize: 9,
             ),
@@ -121,14 +147,65 @@ def fail(msg):
     sys.exit(1)
 
 
+def download_font(name, sha256, dest_dir):
+    dest = dest_dir / name
+    if dest.is_file() and hashlib.sha256(dest.read_bytes()).hexdigest() == sha256:
+        return
+    last = None
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(FONT_URL % name, timeout=60) as r:
+                data = r.read()
+            got = hashlib.sha256(data).hexdigest()
+            if got != sha256:
+                fail("font checksum mismatch for %s (got %s)" % (name, got))
+            dest.write_bytes(data)
+            print("font ready: %s" % dest)
+            return
+        except SystemExit:
+            raise
+        except Exception as e:  # network hiccup: retry
+            last = e
+            time.sleep(3 * attempt)
+    fail("could not download font %s: %s" % (name, last))
+
+
+def install_fonts(root):
+    dest_dir = root / FONT_DIR
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for name, sha in FONT_FILES:
+        download_font(name, sha, dest_dir)
+
+    pub = root / PUBSPEC
+    if not pub.is_file():
+        fail("file not found: %s" % pub)
+    with open(pub, "r", encoding="utf-8", newline="") as f:
+        text = f.read()
+    if "family: Vazirmatn" in text:
+        print("pubspec already lists Vazirmatn")
+        return
+    nl = "\r\n" if "\r\n" in text else "\n"
+    anchor = nl + "  fonts:" + nl
+    if text.count(anchor) != 1:
+        fail("pubspec 'fonts:' anchor found %d times (expected 1)" % text.count(anchor))
+    block = FONT_YAML.replace("\n", nl)
+    text = text.replace(anchor, anchor + block, 1)
+    with open(pub, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
+    print("pubspec updated with Vazirmatn")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rustdesk-root", default=".")
     args = ap.parse_args()
 
-    path = pathlib.Path(args.rustdesk_root) / HOME_PAGE
+    root = pathlib.Path(args.rustdesk_root)
+    path = root / HOME_PAGE
     if not path.is_file():
         fail("file not found: %s" % path)
+
+    install_fonts(root)
 
     # copy the extra Dart files (always, they are ours and safe to overwrite)
     here = pathlib.Path(__file__).resolve().parent

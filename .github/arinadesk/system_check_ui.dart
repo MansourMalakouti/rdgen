@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 
+import 'arina_ui_common.dart';
 import 'system_check_core.dart';
 
 const int _kRendezvousPort = 21116;
@@ -45,9 +46,9 @@ Future<List<Object>> _serverTarget() async {
 }
 
 Future<void> showArinaSystemCheck(BuildContext context) {
-  return showDialog<void>(
-    context: context,
-    builder: (ctx) => const _ArinaCheckDialog(),
+  return arinaShowDialog<void>(
+    context,
+    (ctx) => const _ArinaCheckDialog(),
   );
 }
 
@@ -88,9 +89,15 @@ class _ArinaCheckDialogState extends State<_ArinaCheckDialog> {
   Widget build(BuildContext context) {
     final report = _report;
     return AlertDialog(
-      title: const Text('بررسی سریع سیستم'),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 380, maxWidth: 520),
+      insetPadding: arinaDialogInset,
+      titlePadding: arinaTitlePadding,
+      contentPadding: arinaContentPadding,
+      title: const Text(
+        'بررسی سریع سیستم',
+        style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+      ),
+      content: SizedBox(
+        width: arinaDialogWidth(context, max: 520),
         child: report == null
             ? const Row(
                 children: [

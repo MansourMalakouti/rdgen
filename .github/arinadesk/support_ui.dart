@@ -7,6 +7,7 @@ import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'arina_config.dart';
+import 'arina_ui_common.dart';
 import 'support_api.dart';
 import 'support_store.dart';
 
@@ -44,9 +45,9 @@ Future<void> openArinaSupportPortal(BuildContext context) async {
 
 /// Credentials dialog. Returns true when settings were saved.
 Future<bool> showArinaSupportSettings(BuildContext context) async {
-  final saved = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => const _SettingsDialog(),
+  final saved = await arinaShowDialog<bool>(
+    context,
+    (ctx) => const _SettingsDialog(),
   );
   return saved == true;
 }
@@ -64,9 +65,10 @@ Future<void> showArinaSupportRequest(
     if (!s.hasCredentials) return;
   }
   if (!context.mounted) return;
-  await showDialog<void>(
-    context: context,
-    builder: (ctx) => _RequestDialog(settings: s, deviceId: deviceId),
+  final settings = s;
+  await arinaShowDialog<void>(
+    context,
+    (ctx) => _RequestDialog(settings: settings, deviceId: deviceId),
   );
 }
 
@@ -175,9 +177,15 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('تنظیمات پشتیبانی'),
+      insetPadding: arinaDialogInset,
+      titlePadding: arinaTitlePadding,
+      contentPadding: arinaContentPadding,
+      title: const Text(
+        'تنظیمات پشتیبانی',
+        style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+      ),
       content: SizedBox(
-        width: 420,
+        width: arinaDialogWidth(context),
         child: !_loaded
             ? const SizedBox(
                 height: 60,
@@ -191,6 +199,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                     const Text(
                       'نام کاربری و رمز عبور سامانه‌ی پشتیبانی را یک بار وارد کنید.',
                       textDirection: TextDirection.rtl,
+                      style: TextStyle(fontSize: 13),
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -217,6 +226,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                         _message!,
                         textDirection: TextDirection.rtl,
                         style: TextStyle(
+                          fontSize: 13,
                           color: _messageOk ? Colors.green : Colors.red,
                         ),
                       ),
@@ -324,6 +334,7 @@ class _RequestDialogState extends State<_RequestDialog> {
         group: kArinaZammadGroup,
         title: title,
         body: body,
+        extra: kArinaZammadExtraFields,
       );
       if (!mounted) return;
       setState(() {
@@ -354,18 +365,22 @@ class _RequestDialogState extends State<_RequestDialog> {
             enabled: !_sending,
             maxLength: 120,
             textDirection: TextDirection.rtl,
-            decoration: const InputDecoration(labelText: 'عنوان مشکل'),
+            decoration: const InputDecoration(
+              labelText: 'عنوان مشکل',
+              counterText: '',
+            ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 12),
           TextField(
             controller: _body,
             enabled: !_sending,
-            minLines: 4,
-            maxLines: 8,
+            minLines: 6,
+            maxLines: 12,
             textDirection: TextDirection.rtl,
             decoration: const InputDecoration(
               labelText: 'شرح مشکل',
               alignLabelWithHint: true,
+              border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 8),
@@ -379,7 +394,7 @@ class _RequestDialogState extends State<_RequestDialog> {
             Text(
               _error!,
               textDirection: TextDirection.rtl,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Colors.red, fontSize: 13),
             ),
           ],
         ],
@@ -411,9 +426,17 @@ class _RequestDialogState extends State<_RequestDialog> {
   Widget build(BuildContext context) {
     final t = _ticket;
     return AlertDialog(
+      insetPadding: arinaDialogInset,
+      titlePadding: arinaTitlePadding,
+      contentPadding: arinaContentPadding,
       title: Row(
         children: [
-          const Expanded(child: Text('درخواست پشتیبانی')),
+          const Expanded(
+            child: Text(
+              'درخواست پشتیبانی',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+            ),
+          ),
           if (t == null)
             IconButton(
               tooltip: 'تنظیمات حساب',
@@ -423,7 +446,7 @@ class _RequestDialogState extends State<_RequestDialog> {
         ],
       ),
       content: SizedBox(
-        width: 440,
+        width: arinaDialogWidth(context),
         child: t == null ? _form() : _success(t),
       ),
       actions: t == null
