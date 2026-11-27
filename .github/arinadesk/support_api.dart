@@ -5,7 +5,10 @@ import 'dart:io';
 
 class ArinaSupportException implements Exception {
   final String message;
-  const ArinaSupportException(this.message);
+
+  /// HTTP status code when the server answered with an error.
+  final int? code;
+  const ArinaSupportException(this.message, {this.code});
 
   @override
   String toString() => message;
@@ -95,16 +98,19 @@ Future<dynamic> _request(
     final suffix = detail.isEmpty ? '' : '\n($detail)';
     if (code == 401) {
       throw const ArinaSupportException(
-          'نام کاربری یا رمز عبور اشتباه است.');
+          'نام کاربری یا رمز عبور اشتباه است.',
+          code: 401);
     }
     if (code == 403) {
       throw ArinaSupportException(
-          'این حساب اجازه‌ی انجام این کار را ندارد.$suffix');
+          'این حساب اجازه‌ی انجام این کار را ندارد.$suffix',
+          code: 403);
     }
     if (code == 404 || code == 422) {
-      throw ArinaSupportException('درخواست پذیرفته نشد.$suffix');
+      throw ArinaSupportException('درخواست پذیرفته نشد.$suffix', code: code);
     }
-    throw ArinaSupportException('خطای سامانه‌ی پشتیبانی (کد $code).$suffix');
+    throw ArinaSupportException('خطای سامانه‌ی پشتیبانی (کد $code).$suffix',
+        code: code);
   } on ArinaSupportException {
     rethrow;
   } on TimeoutException {
@@ -175,4 +181,116 @@ Future<ArinaTicket> arinaCreateTicket({
   }
   throw const ArinaSupportException(
       'تیکت ثبت شد ولی شماره‌ی آن از سامانه دریافت نشد.');
+}
+
+// ---------------------------------------------------------------------------
+// Ticket status (for the "is my ticket answered?" indicator)
+
+const String kArinaStatusWaiting = 'waiting'; // no agent reply yet
+const String kArinaStatusAnswered = 'answered'; // an agent replied
+const String kArinaStatusClosed = 'closed';
+
+class ArinaTicketInfo {
+  final int id;
+  final String number;
+  final String title;
+  final String state;
+  final DateTime? lastAgentAt;
+  final DateTime? lastCustomerAt;
+  const ArinaTicketInfo({
+    required this.id,
+    required this.number,
+    required this.title,
+    required this.state,
+    this.lastAgentAt,
+    this.lastCustomerAt,
+  });
+}
+
+DateTime? _date(dynamic v) {
+  if (v == null) return null;
+  return DateTime.tryParse(v.toString());
+}
+
+/// waiting / answered / closed, from Zammad's state and last-contact times.
+String arinaStatusOf(ArinaTicketInfo t) {
+  final s = t.state.trim().toLowerCase();
+  if (s == 'closed' || s == 'merged' || s == 'removed') {
+    return kArinaStatusClosed;
+  }
+  final agent = t.lastAgentAt;
+  final customer = t.lastCustomerAt;
+  if (agent != null && (customer == null || !agent.isBefore(customer))) {
+    return kArinaStatusAnswered;
+  }
+  return kArinaStatusWaiting;
+}
+
+Future<ArinaTicketInfo> arinaGetTicket({
+  required String url,
+  required String user,
+  required String password,
+  required int id,
+}) async {
+  final j = await _request(
+      'GET', url, '/api/v1/tickets/$id?expand=true', user, password);
+  if (j is! Map) {
+    throw const ArinaSupportException('پاسخ نامعتبر از سامانه‌ی پشتیبانی.');
+  }
+  final state = j['state'];
+  return ArinaTicketInfo(
+    id: id,
+    number: (j['number'] ?? id).toString(),
+    title: (j['title'] ?? '').toString(),
+    state: state is String ? state : '',
+    lastAgentAt: _date(j['last_contact_agent_at']),
+    lastCustomerAt: _date(j['last_contact_customer_at']),
+  );
+}
+
+/// Plain text of an HTML snippet (tags removed, entities decoded).
+String arinaStripHtml(String html) {
+  var s = html;
+  s = s.replaceAll(RegExp(r'<(script|style)[^>]*>.*?</\1>',
+      caseSensitive: false, dotAll: true), '');
+  s = s.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
+  s = s.replaceAll(RegExp(r'</(p|div|li|tr|h[1-6])>', caseSensitive: false), '\n');
+  s = s.replaceAll(RegExp(r'<[^>]*>'), '');
+  s = s
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'")
+      .replaceAll('&amp;', '&');
+  s = s.replaceAll(RegExp(r'[ \t]+'), ' ');
+  s = s.replaceAll(RegExp(r'\s*\n\s*'), '\n');
+  return s.trim();
+}
+
+/// Short plain-text preview of the newest public agent reply ('' if none).
+Future<String> arinaLastAgentReply({
+  required String url,
+  required String user,
+  required String password,
+  required int id,
+  int maxChars = 280,
+}) async {
+  final j = await _request('GET', url,
+      '/api/v1/ticket_articles/by_ticket/$id?expand=true', user, password);
+  if (j is! List) return '';
+  for (final a in j.reversed) {
+    if (a is! Map) continue;
+    if ((a['sender'] ?? '').toString().toLowerCase() != 'agent') continue;
+    if (a['internal'] == true) continue;
+    var body = (a['body'] ?? '').toString();
+    if ((a['content_type'] ?? '').toString().contains('html')) {
+      body = arinaStripHtml(body);
+    }
+    body = body.trim();
+    if (body.isEmpty) continue;
+    if (body.length > maxChars) body = '${body.substring(0, maxChars)}...';
+    return body;
+  }
+  return '';
 }
