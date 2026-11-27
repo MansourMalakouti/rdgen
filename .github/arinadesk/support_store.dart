@@ -28,14 +28,18 @@ String _safeName(String s) {
   return r.isEmpty ? 'ArinaDesk' : r;
 }
 
-File _file(String appName, String? baseDir) {
+/// A data file next to the settings file (same per-app folder in APPDATA).
+File arinaDataFile(String appName, String fileName, {String? baseDir}) {
   final base = baseDir ??
       Platform.environment['APPDATA'] ??
       Platform.environment['HOME'] ??
       Directory.systemTemp.path;
   final sep = Platform.pathSeparator;
-  return File('$base$sep${_safeName(appName)}${sep}arina_support.json');
+  return File('$base$sep${_safeName(appName)}$sep$fileName');
 }
+
+File _file(String appName, String? baseDir) =>
+    arinaDataFile(appName, 'arina_support.json', baseDir: baseDir);
 
 Future<ArinaSupportSettings> loadArinaSettings({
   required String appName,

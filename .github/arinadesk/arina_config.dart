@@ -20,3 +20,6 @@ const String kArinaFieldDeviceId = 'arinadesk';
 /// Extra ticket fields sent with every new ticket (for required custom
 /// fields of your Zammad), e.g. {'my_field': 'value'}. Empty by default.
 const Map<String, Object> kArinaZammadExtraFields = {};
+
+/// How often (minutes) the app checks the tickets created from this computer.
+const int kArinaPollMinutes = 5;

@@ -5,6 +5,14 @@ import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:window_manager/window_manager.dart';
 
+String arinaAppName() {
+  try {
+    return bind.mainGetAppNameSync();
+  } catch (_) {
+    return 'ArinaDesk';
+  }
+}
+
 /// Bundled by the patch script (flutter/assets/fonts, pubspec.yaml).
 const String kArinaFont = 'Vazirmatn';
 
