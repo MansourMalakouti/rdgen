@@ -10,6 +10,10 @@ import 'arina_config.dart';
 import 'arina_ui_common.dart';
 import 'support_api.dart';
 import 'support_store.dart';
+import 'ticket_store.dart';
+import 'ticket_ui.dart';
+
+export 'ticket_ui.dart' show ArinaTicketStatus;
 
 String _appName() {
   try {
@@ -300,18 +304,10 @@ class _RequestDialogState extends State<_RequestDialog> {
 
   String _deviceFooter() {
     var host = '';
-    var os = '';
     try {
       host = Platform.localHostname;
-      os = Platform.operatingSystemVersion;
     } catch (_) {}
-    final lines = <String>[
-      '--',
-      '${_appName()} ID: ${widget.deviceId}',
-      if (host.isNotEmpty) 'Computer: $host',
-      if (os.isNotEmpty) 'OS: $os',
-    ];
-    return lines.join('\n');
+    return host.isEmpty ? '' : '--\nComputer: $host';
   }
 
   Future<void> _openSettings() async {
@@ -349,12 +345,16 @@ class _RequestDialogState extends State<_RequestDialog> {
       _error = null;
     });
     try {
-      final body = '${text.isEmpty ? title : text}\n\n${_deviceFooter()}';
+      final footer = _deviceFooter();
+      final body = footer.isEmpty
+          ? (text.isEmpty ? title : text)
+          : '${text.isEmpty ? title : text}\n\n$footer';
       final extra = <String, Object>{...kArinaZammadExtraFields};
       if (kArinaFieldName.isNotEmpty) extra[kArinaFieldName] = name;
       if (kArinaFieldPhone.isNotEmpty) extra[kArinaFieldPhone] = phone;
-      if (kArinaFieldDeviceId.isNotEmpty && widget.deviceId.isNotEmpty) {
-        extra[kArinaFieldDeviceId] = widget.deviceId;
+      final plainId = widget.deviceId.replaceAll(RegExp(r'\s+'), '');
+      if (kArinaFieldDeviceId.isNotEmpty && plainId.isNotEmpty) {
+        extra[kArinaFieldDeviceId] = plainId;
       }
       final t = await arinaCreateTicket(
         url: _settings.url,
@@ -365,6 +365,15 @@ class _RequestDialogState extends State<_RequestDialog> {
         body: body,
         extra: extra,
       );
+      // watch this ticket (status indicator + reply notification)
+      try {
+        await ArinaTicketWatcher.instance.onTicketCreated(ArinaTrackedTicket(
+          id: t.id,
+          number: t.number,
+          title: title,
+          createdAt: DateTime.now().toUtc().toIso8601String(),
+        ));
+      } catch (_) {}
       // remember name / phone for the next request on this computer
       try {
         final updated = ArinaSupportSettings(

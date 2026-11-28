@@ -11,6 +11,9 @@ Buttons:
   3. "quick system check": disk, RAM, uptime, adapters, DNS and connectivity
      checks done natively (dart:ffi / dart:io), no PowerShell or cmd involved.
   4. "copy ticket info": ID, computer name and OS go to the clipboard.
+Plus a status line for the newest ticket created from this computer (waiting /
+answered / closed) and a sound + window-to-front notification when an agent
+replies or closes it.
 
 It also bundles the Vazirmatn font (downloaded at build time, checksum
 verified, SIL OFL licence) and registers it in flutter/pubspec.yaml.
@@ -42,6 +45,9 @@ EXTRA_FILES = (
     "support_ui.dart",
     "system_check_core.dart",
     "system_check_ui.dart",
+    "ticket_store.dart",
+    "ticket_ui.dart",
+    "ticket_watch.dart",
 )
 
 # Vazirmatn (SIL OFL 1.1), pinned release + SHA-256 so a changed file is rejected
@@ -83,6 +89,7 @@ METHODS = r"""Widget buildArinaTools(BuildContext context) {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const ArinaTicketStatus(),
           _arinaToolButton(
               Icons.support_agent,
               'درخواست پشتیبانی',
