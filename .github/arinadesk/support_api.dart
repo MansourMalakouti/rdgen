@@ -185,6 +185,10 @@ Future<ArinaTicket> arinaCreateTicket({
 
 // ---------------------------------------------------------------------------
 // Ticket status (for the "is my ticket answered?" indicator)
+//
+// NOTE: Zammad only fills `last_contact_agent_at` for communication-type
+// replies (email/phone/web), not for notes, so the status is worked out from
+// the public articles (messages) of the ticket instead.
 
 const String kArinaStatusWaiting = 'waiting'; // no agent reply yet
 const String kArinaStatusAnswered = 'answered'; // an agent replied
@@ -194,17 +198,46 @@ class ArinaTicketInfo {
   final int id;
   final String number;
   final String title;
-  final String state;
-  final DateTime? lastAgentAt;
-  final DateTime? lastCustomerAt;
+  final String state; // new / open / pending reminder / pending close / closed
+  final String owner; // assigned agent ('' or '-' when nobody)
+  final String group;
+  final String priority;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
   const ArinaTicketInfo({
     required this.id,
     required this.number,
     required this.title,
     required this.state,
-    this.lastAgentAt,
-    this.lastCustomerAt,
+    this.owner = '',
+    this.group = '',
+    this.priority = '',
+    this.createdAt,
+    this.updatedAt,
   });
+}
+
+/// One message of a ticket.
+class ArinaArticle {
+  final int id;
+  final String sender; // Agent / Customer / System
+  final String type; // note / email / web / phone ...
+  final bool internal; // hidden from customers
+  final DateTime? createdAt;
+  final String from;
+  final String text; // plain text
+  const ArinaArticle({
+    required this.id,
+    required this.sender,
+    required this.type,
+    required this.internal,
+    required this.createdAt,
+    required this.from,
+    required this.text,
+  });
+
+  bool get isAgent => sender.toLowerCase() == 'agent';
+  bool get isCustomer => sender.toLowerCase() == 'customer';
 }
 
 DateTime? _date(dynamic v) {
@@ -212,19 +245,7 @@ DateTime? _date(dynamic v) {
   return DateTime.tryParse(v.toString());
 }
 
-/// waiting / answered / closed, from Zammad's state and last-contact times.
-String arinaStatusOf(ArinaTicketInfo t) {
-  final s = t.state.trim().toLowerCase();
-  if (s == 'closed' || s == 'merged' || s == 'removed') {
-    return kArinaStatusClosed;
-  }
-  final agent = t.lastAgentAt;
-  final customer = t.lastCustomerAt;
-  if (agent != null && (customer == null || !agent.isBefore(customer))) {
-    return kArinaStatusAnswered;
-  }
-  return kArinaStatusWaiting;
-}
+String _str(dynamic v) => (v ?? '').toString();
 
 Future<ArinaTicketInfo> arinaGetTicket({
   required String url,
@@ -237,14 +258,16 @@ Future<ArinaTicketInfo> arinaGetTicket({
   if (j is! Map) {
     throw const ArinaSupportException('پاسخ نامعتبر از سامانه‌ی پشتیبانی.');
   }
-  final state = j['state'];
   return ArinaTicketInfo(
     id: id,
     number: (j['number'] ?? id).toString(),
-    title: (j['title'] ?? '').toString(),
-    state: state is String ? state : '',
-    lastAgentAt: _date(j['last_contact_agent_at']),
-    lastCustomerAt: _date(j['last_contact_customer_at']),
+    title: _str(j['title']),
+    state: j['state'] is String ? j['state'] as String : '',
+    owner: _str(j['owner']),
+    group: _str(j['group']),
+    priority: _str(j['priority']),
+    createdAt: _date(j['created_at']),
+    updatedAt: _date(j['updated_at']),
   );
 }
 
@@ -268,29 +291,66 @@ String arinaStripHtml(String html) {
   return s.trim();
 }
 
-/// Short plain-text preview of the newest public agent reply ('' if none).
-Future<String> arinaLastAgentReply({
+/// All messages of a ticket, oldest first (a customer only gets public ones).
+Future<List<ArinaArticle>> arinaGetArticles({
   required String url,
   required String user,
   required String password,
   required int id,
-  int maxChars = 280,
 }) async {
   final j = await _request('GET', url,
       '/api/v1/ticket_articles/by_ticket/$id?expand=true', user, password);
-  if (j is! List) return '';
-  for (final a in j.reversed) {
-    if (a is! Map) continue;
-    if ((a['sender'] ?? '').toString().toLowerCase() != 'agent') continue;
-    if (a['internal'] == true) continue;
-    var body = (a['body'] ?? '').toString();
-    if ((a['content_type'] ?? '').toString().contains('html')) {
-      body = arinaStripHtml(body);
-    }
-    body = body.trim();
-    if (body.isEmpty) continue;
-    if (body.length > maxChars) body = '${body.substring(0, maxChars)}...';
-    return body;
+  final out = <ArinaArticle>[];
+  if (j is! List) return out;
+  for (final a in j) {
+    if (a is! Map || a['id'] is! int) continue;
+    var body = _str(a['body']);
+    if (_str(a['content_type']).contains('html')) body = arinaStripHtml(body);
+    out.add(ArinaArticle(
+      id: a['id'] as int,
+      sender: _str(a['sender']),
+      type: _str(a['type']),
+      internal: a['internal'] == true,
+      createdAt: _date(a['created_at']),
+      from: _str(a['from']),
+      text: body.trim(),
+    ));
+  }
+  out.sort((x, y) => x.id.compareTo(y.id));
+  return out;
+}
+
+/// waiting / answered / closed. "Answered" = the newest public message between
+/// the customer and the agents was written by an agent (notes included).
+String arinaStatusOf(String state, List<ArinaArticle> articles) {
+  final s = state.trim().toLowerCase();
+  if (s == 'closed' || s == 'merged' || s == 'removed') {
+    return kArinaStatusClosed;
+  }
+  for (final a in articles.reversed) {
+    if (a.internal) continue;
+    if (a.isAgent) return kArinaStatusAnswered;
+    if (a.isCustomer) return kArinaStatusWaiting;
+  }
+  return kArinaStatusWaiting;
+}
+
+/// Id of the newest public agent message (0 if none).
+int arinaLastAgentArticleId(List<ArinaArticle> articles) {
+  var best = 0;
+  for (final a in articles) {
+    if (!a.internal && a.isAgent && a.id > best) best = a.id;
+  }
+  return best;
+}
+
+/// Short preview of the newest public agent message ('' if none).
+String arinaAgentPreview(List<ArinaArticle> articles, {int maxChars = 280}) {
+  for (final a in articles.reversed) {
+    if (a.internal || !a.isAgent || a.text.isEmpty) continue;
+    return a.text.length > maxChars
+        ? '${a.text.substring(0, maxChars)}...'
+        : a.text;
   }
   return '';
 }

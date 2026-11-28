@@ -51,12 +51,24 @@ Future<List<ArinaTicketEvent>> arinaPollTickets({
       continue;
     }
 
-    final status = arinaStatusOf(info);
-    final agentAt = info.lastAgentAt?.toUtc().toIso8601String() ?? '';
-    final closedNow = status == kArinaStatusClosed && t.status != kArinaStatusClosed;
-    final newReply = agentAt.isNotEmpty &&
-        agentAt != t.lastAgentAt &&
-        status != kArinaStatusClosed;
+    final List<ArinaArticle> articles;
+    try {
+      articles = await arinaGetArticles(
+        url: settings.url,
+        user: settings.user,
+        password: settings.password,
+        id: t.id,
+      );
+    } catch (_) {
+      out.add(t);
+      continue;
+    }
+
+    final status = arinaStatusOf(info.state, articles);
+    final agentId = arinaLastAgentArticleId(articles);
+    final closedNow =
+        status == kArinaStatusClosed && t.status != kArinaStatusClosed;
+    final newReply = agentId > t.lastAgentArticleId && status != kArinaStatusClosed;
     final kind = closedNow
         ? kArinaEventClosed
         : (newReply ? kArinaEventAnswered : '');
@@ -64,11 +76,11 @@ Future<List<ArinaTicketEvent>> arinaPollTickets({
     final updated = t.copyWith(
       title: info.title.isEmpty ? t.title : info.title,
       status: status,
-      lastAgentAt: agentAt,
+      lastAgentArticleId: agentId > t.lastAgentArticleId ? agentId : null,
       unseen: t.unseen || kind.isNotEmpty,
     );
     if (updated.status != t.status ||
-        updated.lastAgentAt != t.lastAgentAt ||
+        updated.lastAgentArticleId != t.lastAgentArticleId ||
         updated.title != t.title ||
         updated.unseen != t.unseen) {
       changed = true;
@@ -76,16 +88,7 @@ Future<List<ArinaTicketEvent>> arinaPollTickets({
     out.add(updated);
 
     if (kind.isNotEmpty) {
-      var preview = '';
-      try {
-        preview = await arinaLastAgentReply(
-          url: settings.url,
-          user: settings.user,
-          password: settings.password,
-          id: t.id,
-        );
-      } catch (_) {}
-      events.add(ArinaTicketEvent(updated, kind, preview));
+      events.add(ArinaTicketEvent(updated, kind, arinaAgentPreview(articles)));
     }
   }
 

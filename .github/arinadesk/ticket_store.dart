@@ -13,7 +13,7 @@ class ArinaTrackedTicket {
   final String number;
   final String title;
   final String status; // kArinaStatus*
-  final String lastAgentAt; // ISO UTC of the last agent reply we know, or ''
+  final int lastAgentArticleId; // newest public agent message we know, or 0
   final bool unseen; // a reply / closing the user has not looked at yet
   final String createdAt;
 
@@ -22,7 +22,7 @@ class ArinaTrackedTicket {
     required this.number,
     required this.title,
     this.status = kArinaStatusWaiting,
-    this.lastAgentAt = '',
+    this.lastAgentArticleId = 0,
     this.unseen = false,
     this.createdAt = '',
   });
@@ -30,7 +30,7 @@ class ArinaTrackedTicket {
   ArinaTrackedTicket copyWith({
     String? title,
     String? status,
-    String? lastAgentAt,
+    int? lastAgentArticleId,
     bool? unseen,
   }) =>
       ArinaTrackedTicket(
@@ -38,7 +38,7 @@ class ArinaTrackedTicket {
         number: number,
         title: title ?? this.title,
         status: status ?? this.status,
-        lastAgentAt: lastAgentAt ?? this.lastAgentAt,
+        lastAgentArticleId: lastAgentArticleId ?? this.lastAgentArticleId,
         unseen: unseen ?? this.unseen,
         createdAt: createdAt,
       );
@@ -48,7 +48,7 @@ class ArinaTrackedTicket {
         'number': number,
         'title': title,
         'status': status,
-        'last_agent_at': lastAgentAt,
+        'last_agent_article_id': lastAgentArticleId,
         'unseen': unseen,
         'created_at': createdAt,
       };
@@ -60,7 +60,8 @@ class ArinaTrackedTicket {
       number: (j['number'] ?? j['id']).toString(),
       title: (j['title'] ?? '').toString(),
       status: (j['status'] ?? kArinaStatusWaiting).toString(),
-      lastAgentAt: (j['last_agent_at'] ?? '').toString(),
+      lastAgentArticleId:
+          j['last_agent_article_id'] is int ? j['last_agent_article_id'] as int : 0,
       unseen: j['unseen'] == true,
       createdAt: (j['created_at'] ?? '').toString(),
     );
